@@ -1,0 +1,15 @@
+{
+  "name": "starcat-utools-plugin",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Official uTools plugin for searching Starcat local repositories and GitHub.",
+  "license": "MIT",
+  "engines": {
+    "node": ">=16.17.0"
+  },
+  "scripts": {
+    "check": "node --check preload.js && node --check src/*.js && node --check scripts/*.js && node --check test/*.test.js",
+    "test": "node --test test/*.test.js",
+    "verify": "npm run check && npm test && node scripts/verify-plugin.js"
+  }
+}

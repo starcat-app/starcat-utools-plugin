@@ -1,0 +1,18 @@
+{
+  "logo": "assets/logo.png",
+  "preload": "preload.js",
+  "features": [
+    {
+      "code": "starcat-repository-search",
+      "explain": "搜索 Starcat 本地与 GitHub 仓库",
+      "icon": "assets/logo.png",
+      "platform": [
+        "darwin"
+      ],
+      "cmds": [
+        "Starcat",
+        "仓库搜索"
+      ]
+    }
+  ]
+}
