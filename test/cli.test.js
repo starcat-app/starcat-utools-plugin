@@ -10,8 +10,10 @@ const test = require("node:test");
 const {
   buildSearchArgs,
   executeCLI,
+  parseCLIVersion,
   resolveCLI,
-  searchRepositories
+  searchRepositories,
+  versionIsOlder
 } = require("../src/cli");
 const { fixtureText } = require("./helpers");
 
@@ -54,6 +56,14 @@ test("builds an argv array without shell interpolation", () => {
     "--limit",
     "30"
   ]);
+});
+
+test("parses and compares released CLI versions", () => {
+  assert.deepEqual(parseCLIVersion("Starcat CLI v1.1.0\n"), [1, 1, 0]);
+  assert.equal(parseCLIVersion("Starcat CLI dev"), null);
+  assert.equal(versionIsOlder([1, 0, 9], [1, 1, 0]), true);
+  assert.equal(versionIsOlder([1, 1, 0], [1, 1, 0]), false);
+  assert.equal(versionIsOlder([1, 2, 0], [1, 1, 0]), false);
 });
 
 test("resolves an explicit absolute executable", () => {
@@ -109,6 +119,38 @@ test("maps stable CLI error codes without parsing human text", async () => {
     ),
     (error) => error.code === "MCP_DISABLED"
   );
+});
+
+test("diagnoses pre-search CLI versions after an unclassified failure", async () => {
+  const fixture = executableFixture();
+  try {
+    const execFile = (_file, args, _options, callback) => {
+      const child = { stderr: new EventEmitter() };
+      process.nextTick(() => {
+        if (args[0] === "version") {
+          callback(null, "Starcat CLI v1.0.0\n", "");
+          return;
+        }
+        callback(
+          new Error("exit 1"),
+          "",
+          "starcat: unknown command \"search\"; run `starcat help` for usage"
+        );
+      });
+      return child;
+    };
+    await assert.rejects(
+      searchRepositories({
+        query: "starcat",
+        cliPath: fixture.executable,
+        environment: { PATH: "" },
+        execFile
+      }),
+      (error) => error.code === "UPGRADE_REQUIRED"
+    );
+  } finally {
+    fixture.cleanup();
+  }
 });
 
 test("maps timeout to SEARCH_TIMEOUT", async () => {

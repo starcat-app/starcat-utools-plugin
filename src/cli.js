@@ -13,6 +13,7 @@ const {
   DEFAULT_LIMIT,
   DEFAULT_SOURCE,
   DEFAULT_TIMEOUT_MS,
+  MINIMUM_CLI_VERSION,
   MAX_STDERR_BYTES,
   MAX_STDOUT_BYTES
 } = require("./constants");
@@ -89,6 +90,22 @@ function buildSearchArgs(query, source, limit) {
     "--limit",
     String(limit)
   ];
+}
+
+function parseCLIVersion(output) {
+  const match = String(output || "").trim().match(
+    /^Starcat CLI v?([0-9]+)\.([0-9]+)\.([0-9]+)$/
+  );
+  return match ? match.slice(1).map(Number) : null;
+}
+
+function versionIsOlder(version, minimum) {
+  for (let index = 0; index < minimum.length; index += 1) {
+    if (version[index] !== minimum[index]) {
+      return version[index] < minimum[index];
+    }
+  }
+  return false;
 }
 
 function executeCLI(executable, args, options) {
@@ -192,11 +209,38 @@ async function searchRepositories(options) {
   const limit = settings.limit || DEFAULT_LIMIT;
   const args = buildSearchArgs(settings.query, source, limit);
   const executable = resolveCLI(settings.cliPath, settings.environment);
-  const stdout = await executeCLI(executable, args, {
+  const executeOptions = {
     execFile: settings.execFile,
     signal: settings.signal,
     timeoutMs: settings.timeoutMs
-  });
+  };
+  let stdout;
+  try {
+    stdout = await executeCLI(executable, args, executeOptions);
+  } catch (searchError) {
+    if (!searchError || searchError.code !== "SEARCH_FAILED") {
+      throw searchError;
+    }
+
+    // v1.0.0 尚未实现 search，也无法输出稳定错误码。只在未分类失败路径额外
+    // 查询一次版本，避免正常输入热路径为每个关键词多启动一个进程。
+    try {
+      const versionOutput = await executeCLI(executable, ["version"], executeOptions);
+      const version = parseCLIVersion(versionOutput);
+      if (version && versionIsOlder(version, MINIMUM_CLI_VERSION)) {
+        throw new LauncherError(
+          "UPGRADE_REQUIRED",
+          "Starcat CLI 1.1.0 or newer is required"
+        );
+      }
+    } catch (diagnosticError) {
+      if (diagnosticError && diagnosticError.code === "UPGRADE_REQUIRED") {
+        throw diagnosticError;
+      }
+      // 诊断失败不能覆盖原始搜索错误，否则会把网络或服务问题误报成版本问题。
+    }
+    throw searchError;
+  }
   if (Buffer.byteLength(stdout, "utf8") > MAX_STDOUT_BYTES) {
     throw new LauncherError("SEARCH_FAILED", "Starcat CLI stdout exceeded the limit");
   }
@@ -207,6 +251,8 @@ module.exports = {
   buildSearchArgs,
   executeCLI,
   executableFile,
+  parseCLIVersion,
   resolveCLI,
-  searchRepositories
+  searchRepositories,
+  versionIsOlder
 };
